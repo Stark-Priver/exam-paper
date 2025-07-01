@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Edit Student{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Edit Student: {{ student.name }}</h2>
+    <hr>
+    <form method="POST" action="{{ url_for('main.edit_student', student_id=student.id) }}" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+        <div class="row">
+            <div class="col-md-8">
+                <div class="form-group">
+                    {{ form.student_id_number.label(class="form-control-label") }}
+                    {% if form.student_id_number.errors %}
+                        {{ form.student_id_number(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.student_id_number.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.student_id_number(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.name.label(class="form-control-label") }}
+                    {% if form.name.errors %}
+                        {{ form.name(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.name.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.name(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.photo.label(class="form-control-label") }}
+                    {{ form.photo(class="form-control-file") }}
+                    {% if form.photo.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.photo.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <small class="form-text text-muted">
+                        Upload a new photo if you want to change the current one. Allowed formats: JPG, PNG.
+                    </small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <h5>Current Photo:</h5>
+                {% if student.face_image_path %}
+                    <img src="{{ url_for('static', filename='../data/student_images/' + student.face_image_path) }}" alt="Photo of {{ student.name }}" class="img-thumbnail student-photo-preview mb-3">
+                {% else %}
+                    <p>No photo on file.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <hr>
+        <div class="form-group">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-save"></i> {{ form.submit.label.text }}
+            </button>
+            <a href="{{ url_for('main.manage_students') }}" class="btn btn-outline-secondary btn-lg">
+                <i class="fas fa-times-circle"></i> Cancel
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

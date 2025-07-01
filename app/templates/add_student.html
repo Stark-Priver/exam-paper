@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Add Student{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Add New Student</h2>
+    <hr>
+    <form method="POST" action="{{ url_for('main.add_student') }}" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+            {{ form.student_id_number.label(class="form-control-label") }}
+            {% if form.student_id_number.errors %}
+                {{ form.student_id_number(class="form-control form-control-lg is-invalid") }}
+                <div class="invalid-feedback">
+                    {% for error in form.student_id_number.errors %}
+                        <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+            {% else %}
+                {{ form.student_id_number(class="form-control form-control-lg") }}
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            {{ form.name.label(class="form-control-label") }}
+            {% if form.name.errors %}
+                {{ form.name(class="form-control form-control-lg is-invalid") }}
+                <div class="invalid-feedback">
+                    {% for error in form.name.errors %}
+                        <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+            {% else %}
+                {{ form.name(class="form-control form-control-lg") }}
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            {{ form.photo.label(class="form-control-label") }}
+            {{ form.photo(class="form-control-file") }}
+            {% if form.photo.errors %}
+                <div class="invalid-feedback d-block">
+                    {% for error in form.photo.errors %}
+                        <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <small class="form-text text-muted">
+                Upload a clear frontal face picture. Allowed formats: JPG, PNG.
+            </small>
+        </div>
+
+        <hr>
+        <div class="form-group">
+            <button type="submit" class="btn btn-success btn-lg">
+                <i class="fas fa-save"></i> {{ form.submit.label.text }}
+            </button>
+            <a href="{{ url_for('main.manage_students') }}" class="btn btn-outline-secondary btn-lg">
+                <i class="fas fa-times-circle"></i> Cancel
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

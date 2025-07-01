@@ -1,0 +1,140 @@
+/* Basic body styling */
+body {
+    padding-top: 56px; /* Adjust based on navbar height */
+    font-family: 'Arial', sans-serif;
+    background-color: #f8f9fa; /* Light grey background */
+}
+
+/* Navbar styling */
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+}
+
+/* Card styling for dashboard elements */
+.card {
+    margin-bottom: 20px;
+    border: none; /* Optional: remove default card border */
+    box-shadow: 0 0 15px rgba(0,0,0,0.05); /* Softer shadow */
+}
+
+.card-header {
+    background-color: #e9ecef; /* Light header background */
+    border-bottom: 1px solid #ced4da; /* Border for header */
+    font-size: 1.25rem;
+}
+
+.card-title {
+    margin-bottom: 0.75rem;
+}
+
+/* Jumbotron styling */
+.jumbotron {
+    background-color: #ffffff; /* White jumbotron */
+    padding: 2rem 2rem;
+    border-radius: .3rem;
+    box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+
+/* Button styling */
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+.btn-primary:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+}
+
+.btn-info {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+}
+.btn-info:hover {
+    background-color: #117a8b;
+    border-color: #117a8b;
+}
+
+.btn-warning {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #212529; /* Dark text for warning button */
+}
+.btn-warning:hover {
+    background-color: #e0a800;
+    border-color: #d39e00;
+    color: #212529;
+}
+
+
+/* Form styling */
+.form-control-label {
+    font-weight: bold;
+}
+
+.form-control-lg {
+    font-size: 1.1rem;
+    padding: .75rem 1.25rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+/* Alert styling */
+.alert {
+    margin-top: 1rem;
+}
+
+/* Footer (if you add one) */
+/*
+footer {
+    padding: 20px 0;
+    background-color: #343a40;
+    color: white;
+    text-align: center;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}
+*/
+
+/* Responsive adjustments if needed */
+@media (max-width: 768px) {
+    body {
+        padding-top: 54px; /* Adjust if navbar height changes on mobile */
+    }
+    .jumbotron h1 {
+        font-size: 2.5rem;
+    }
+}
+
+/* Live feed specific (can be moved to a separate CSS if it grows) */
+#video-feed-container {
+    max-width: 640px; /* Or your preferred max width */
+    margin: auto;
+    border: 1px solid #ddd;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+#video-feed-container img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Student photo preview */
+.student-photo-preview {
+    max-width: 150px;
+    max-height: 150px;
+    border: 1px solid #ddd;
+    margin-top: 10px;
+}
+
+/* Table styling */
+.table thead th {
+    background-color: #e9ecef;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f1f1f1;
+}
