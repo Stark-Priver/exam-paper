@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Manage Exams{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <h2>Manage Exams</h2>
+        </div>
+        <div class="col-md-6 text-right">
+            <a href="{{ url_for('main.add_exam') }}" class="btn btn-success">
+                <i class="fas fa-plus-circle"></i> Add New Exam
+            </a>
+        </div>
+    </div>
+
+    {% if exams %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead class="thead-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Subject</th>
+                    <th>Date</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exam in exams %}
+                <tr>
+                    <td>{{ exam.id }}</td>
+                    <td>{{ exam.subject }}</td>
+                    <td>{{ exam.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ exam.start_time.strftime('%H:%M') }}</td>
+                    <td>{{ exam.end_time.strftime('%H:%M') }}</td>
+                    <td>
+                        <a href="{{ url_for('main.edit_exam', exam_id=exam.id) }}" class="btn btn-sm btn-outline-primary mr-1" title="Edit Exam">
+                            <i class="fas fa-edit"></i> Edit
+                        </a>
+                        <form action="{{ url_for('main.delete_exam', exam_id=exam.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this exam and its associated logs?');">
+                             {{ form_hidden_tag() if form_hidden_tag else '' }} {# General CSRF if available through context #}
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Exam">
+                                <i class="fas fa-trash-alt"></i> Delete
+                            </button>
+                        </form>
+                        {# Optional: Link to view students for this exam or logs #}
+                        <a href="{{ url_for('main.live_auth', exam_id=exam.id) }}" class="btn btn-sm btn-outline-warning ml-1" title="Start Auth Session">
+                            <i class="fas fa-video"></i> Start Auth
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center">
+        <p><i class="fas fa-info-circle"></i> No exams scheduled yet.</p>
+        <a href="{{ url_for('main.add_exam') }}" class="btn btn-success"><i class="fas fa-plus-circle"></i> Schedule an Exam</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# Font Awesome is loaded in base.html now #}
+{% endblock %}

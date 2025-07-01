@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Edit Exam{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Edit Exam: {{ exam.subject }} on {{ exam.date.strftime('%Y-%m-%d') }}</h2>
+    <hr>
+    <form method="POST" action="{{ url_for('main.edit_exam', exam_id=exam.id) }}">
+        {{ form.hidden_tag() }}
+
+        <div class="form-group">
+            {{ form.subject.label(class="form-control-label") }}
+            {% if form.subject.errors %}
+                {{ form.subject(class="form-control form-control-lg is-invalid") }}
+                <div class="invalid-feedback">
+                    {% for error in form.subject.errors %}
+                        <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+            {% else %}
+                {{ form.subject(class="form-control form-control-lg") }}
+            {% endif %}
+        </div>
+
+        <div class="form-row">
+            <div class="form-group col-md-4">
+                {{ form.date.label(class="form-control-label") }}
+                {% if form.date.errors %}
+                    {{ form.date(class="form-control form-control-lg is-invalid", type="date") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.date.errors %}
+                            <span>{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.date(class="form-control form-control-lg", type="date") }}
+                {% endif %}
+            </div>
+            <div class="form-group col-md-4">
+                {{ form.start_time.label(class="form-control-label") }}
+                {% if form.start_time.errors %}
+                    {{ form.start_time(class="form-control form-control-lg is-invalid", type="time") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.start_time.errors %}
+                            <span>{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.start_time(class="form-control form-control-lg", type="time") }}
+                {% endif %}
+            </div>
+            <div class="form-group col-md-4">
+                {{ form.end_time.label(class="form-control-label") }}
+                {% if form.end_time.errors %}
+                    {{ form.end_time(class="form-control form-control-lg is-invalid", type="time") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.end_time.errors %}
+                            <span>{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.end_time(class="form-control form-control-lg", type="time") }}
+                {% endif %}
+            </div>
+        </div>
+        {% if form.end_time.errors %} {# Catch error from validate_end_time #}
+            <div class="form-group">
+                 <div class="alert alert-danger">
+                    {% for error in form.end_time.errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <hr>
+        <div class="form-group">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-save"></i> {{ form.submit.label.text }}
+            </button>
+            <a href="{{ url_for('main.manage_exams') }}" class="btn btn-outline-secondary btn-lg">
+                <i class="fas fa-times-circle"></i> Cancel
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}
