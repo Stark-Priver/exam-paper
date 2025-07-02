@@ -57,22 +57,24 @@ def process_student_image(image_input, student_id_number, source_type='fileuploa
     try:
         # Load the saved image and find face encodings
         image = face_recognition.load_image_file(image_path)
-            face_encodings = face_recognition.face_encodings(image)
+        face_encodings = face_recognition.face_encodings(image)
 
-            if face_encodings:
-                # Assuming one face per photo for simplicity
-                return filename, face_encodings[0]
-            else:
-                # No faces found, remove the saved image
+        if face_encodings:
+            # Assuming one face per photo for simplicity
+            return filename, face_encodings[0]
+        else:
+            # No faces found, remove the saved image
+            os.remove(image_path)
+            return None, "No face found in the uploaded image."
+    except Exception as e:
+        # Handle potential errors during file saving or processing
+        # It's good practice to check existence before removing, even if an error occurred elsewhere.
+        if os.path.exists(image_path):
+            try:
                 os.remove(image_path)
-                return None, "No face found in the uploaded image."
-        except Exception as e:
-            # Handle potential errors during file saving or processing
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            return None, f"Error processing image: {str(e)}"
-    else:
-        return None, "File type not allowed."
+            except Exception as remove_e: # Log or handle remove error if necessary
+                current_app.logger.error(f"Error removing image {image_path} after processing error: {remove_e}")
+        return None, f"Error processing image: {str(e)}"
 
 def remove_student_image(image_filename):
     """Removes a student's image file."""
