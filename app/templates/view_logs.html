@@ -50,8 +50,10 @@
                 {# Helper macro for sortable table headers #}
                 {% macro sortable_th(column_key, display_name, current_sort_by, current_sort_order) %}
                     {% set new_sort_order = 'asc' if current_sort_by == column_key and current_sort_order == 'desc' else 'desc' %}
+                    {% set query_params = request.args.to_dict() %}
+                    {% do query_params.update({'sort_by': column_key, 'sort_order': new_sort_order, 'page': 1}) %}
                     <th scope="col">
-                        <a href="{{ url_for('main.view_logs', page=request.args.get('page', 1), sort_by=column_key, sort_order=new_sort_order, **request.args.to_dict(flat=False)|rejectattr('sort_by', 'equalto', current_sort_by)|list|selectattr(0, 'ne', 'sort_order')|selectattr(0, 'ne', 'page')|dict) }}" class="text-white">
+                        <a href="{{ url_for('main.view_logs', **query_params) }}" class="text-white">
                             {{ display_name }}
                             {% if current_sort_by == column_key %}
                                 <i class="fas fa-sort-{{ 'up' if current_sort_order == 'asc' else 'down' }}"></i>
