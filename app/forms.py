@@ -60,3 +60,7 @@ class ExamForm(FlaskForm):
         if self.start_time.data and end_time.data:
             if end_time.data <= self.start_time.data:
                 raise ValidationError('End time must be after start time.')
+
+class ExamRegistrationForm(FlaskForm):
+    students = StringField('Student ID Numbers (comma-separated)', validators=[DataRequired()])
+    submit = SubmitField('Update Registered Students')

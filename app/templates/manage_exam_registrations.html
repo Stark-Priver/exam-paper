@@ -1,57 +1,59 @@
 {% extends "base.html" %}
-
 {% block title %}{{ title }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <div class="row mb-3">
-        <div class="col-md-10">
-            <h2>Manage Student Registrations</h2>
-            <h4>Exam: <strong>{{ exam.subject }}</strong></h4>
-            <p>Date: {{ exam.date.strftime('%Y-%m-%d') }} | Time: {{ exam.start_time.strftime('%H:%M') }} - {{ exam.end_time.strftime('%H:%M') }}</p>
-        </div>
-        <div class="col-md-2 text-right">
-            <a href="{{ url_for('main.manage_exams') }}" class="btn btn-secondary">Back to Exams</a>
-        </div>
-    </div>
+    <h2>{{ title }}</h2>
+    <p>Exam: <strong>{{ exam.subject }}</strong> on {{ exam.date.strftime('%Y-%m-%d') }}</p>
+    <hr>
 
-    {% include '_flash_messages.html' %} {# Assuming you have a template for flashing messages #}
-
-    <div class="card">
-        <div class="card-header">
-            Student List
-        </div>
-        <div class="card-body">
-            {% if all_students %}
-            <ul class="list-group list-group-flush">
-                {% for student in all_students %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong>{{ student.name }}</strong> (ID: {{ student.student_id_number }})
-                        {% if student.id in registered_student_ids %}
-                            <span class="badge badge-success ml-2">Registered</span>
-                        {% else %}
-                            <span class="badge badge-secondary ml-2">Not Registered</span>
-                        {% endif %}
-                    </div>
-                    <div>
-                        {% if student.id in registered_student_ids %}
-                        <form action="{{ url_for('main.unregister_student_from_exam', exam_id=exam.id, student_id=student.id) }}" method="POST" class="d-inline">
-                            <button type="submit" class="btn btn-warning btn-sm">Unregister</button>
-                        </form>
-                        {% else %}
-                        <form action="{{ url_for('main.register_student_for_exam', exam_id=exam.id, student_id=student.id) }}" method="POST" class="d-inline">
-                            <button type="submit" class="btn btn-primary btn-sm">Register</button>
-                        </form>
-                        {% endif %}
-                    </div>
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p class="text-muted">No students found in the system. Please <a href="{{ url_for('main.add_student') }}">add students</a> first.</p>
+    <form method="POST" action="{{ url_for('main.manage_exam_registrations', exam_id=exam.id) }}">
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+            {{ form.students.label(class="form-control-label") }}
+            {{ form.students(class="form-control form-control-lg", placeholder="e.g., S1001, S1002, S1003") }}
+            {% if form.students.errors %}
+                <div class="invalid-feedback d-block">
+                    {% for error in form.students.errors %}
+                        <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
             {% endif %}
+            <small class="form-text text-muted">
+                Enter comma-separated Student ID Numbers of students eligible for this exam.
+            </small>
         </div>
+        <div class="form-group mt-3">
+            {{ form.submit(class="btn btn-primary") }}
+            <a href="{{ url_for('main.manage_exams') }}" class="btn btn-outline-secondary ml-2">Cancel</a>
+        </div>
+    </form>
+
+    <hr>
+    <h4>Currently Registered Students ({{ exam.registered_students|length }})</h4>
+    {% if exam.registered_students %}
+    <ul class="list-group mb-3">
+        {% for student in exam.registered_students %}
+        <li class="list-group-item">{{ student.name }} ({{ student.student_id_number }})</li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="alert alert-info">No students are currently registered for this exam.</div>
+    {% endif %}
+
+    <h4>All Available Students (for reference)</h4>
+    {% if all_students %}
+    <p><small>This list shows all students in the system. You can use their ID numbers above.</small></p>
+    <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+        <ul class="list-unstyled">
+            {% for student in all_students %}
+            <li>{{ student.name }} (<strong>{{ student.student_id_number }}</strong>)</li>
+            {% endfor %}
+        </ul>
     </div>
+    {% else %}
+    <p class="text-muted">No students found in the system.</p>
+    {% endif %}
+
 </div>
 {% endblock %}
