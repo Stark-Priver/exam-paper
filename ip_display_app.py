@@ -89,30 +89,70 @@ def display_ips_on_lcd(lcd, ips_dict):
 def main():
     lcd = None
     buzzer = None
+    lcd_initialized = False
+    buzzer_initialized = False
 
     try:
         # Initialize GPIO (using BCM mode is important)
         GPIO.setmode(GPIO.BCM) # Set mode globally for all modules
 
         # Initialize LCD
-        print(f"Initializing LCD at I2C address 0x{LCD_I2C_ADDRESS:02X}...")
-        lcd = LCD_I2C(i2c_addr=LCD_I2C_ADDRESS)
-        lcd.message("System Booting..", 1)
-        lcd.message("Please wait...", 2)
-        print("LCD Initialized.")
+        try:
+            print(f"Initializing LCD at I2C address 0x{LCD_I2C_ADDRESS:02X}...")
+            lcd = LCD_I2C(i2c_addr=LCD_I2C_ADDRESS)
+            lcd.message("LCD Init OK", 1)
+            print("LCD Initialized.")
+            lcd_initialized = True
+            time.sleep(0.5) # Short pause to display message
+        except Exception as e:
+            print(f"Error initializing LCD: {e}")
+            # If LCD fails, we can't display on it. Buzzer might still work.
 
         # Initialize Buzzer
-        print(f"Initializing Buzzer on GPIO {BUZZER_GPIO_PIN}...")
-        buzzer = PassiveBuzzer(buzzer_pin=BUZZER_GPIO_PIN)
-        print("Buzzer Initialized.")
+        try:
+            print(f"Initializing Buzzer on GPIO {BUZZER_GPIO_PIN}...")
+            buzzer = PassiveBuzzer(buzzer_pin=BUZZER_GPIO_PIN)
+            print("Buzzer Initialized.")
+            # Play a confirmation beep - assuming confirmation_beep will be added to PassiveBuzzer
+            # If it's not there yet, this might cause a temporary error until step 2,
+            # or we can use an existing beep method for now.
+            # Using existing beep for now, will refine if new method is added.
+            buzzer.beep(repeat=2, tone_duration=0.05, pause_duration=0.05, frequency=1500)
+            buzzer_initialized = True
+            if lcd_initialized:
+                lcd.message("Buzzer Init OK", 2)
+            time.sleep(0.5) # Short pause
+        except Exception as e:
+            print(f"Error initializing Buzzer: {e}")
+            if lcd_initialized:
+                lcd.clear()
+                lcd.message("Buzzer Init FAIL", 1)
+                time.sleep(1)
+            # No buzzer sound possible if it failed.
 
-        # Play startup sound
-        print("Playing startup sound...")
-        buzzer.startup_sound()
+        # Combined status and startup sequence
+        if lcd_initialized and buzzer_initialized:
+            print("LCD and Buzzer OK. Playing startup sound...")
+            lcd.clear()
+            lcd.message("System Ready", 1)
+            lcd.message("IP Display Active", 2)
+            buzzer.startup_sound() # Original startup sound
+            time.sleep(1.5)
+        elif lcd_initialized:
+            lcd.clear()
+            lcd.message("Sys Ready (NoBuz)", 1) # System ready, but buzzer failed
+            time.sleep(1.5)
+        elif buzzer_initialized:
+            # If only buzzer works, play a different sound pattern to indicate LCD failure
+            print("LCD failed, Buzzer OK. Playing alert sound for LCD failure.")
+            buzzer.alert_sound() # Use alert sound to indicate an issue
+            time.sleep(1.5)
+        else:
+            # Both failed
+            print("CRITICAL: LCD and Buzzer failed to initialize.")
+            # No feedback possible via LCD/Buzzer. Console log is key.
+            time.sleep(1.5)
 
-        lcd.clear()
-        lcd.message("IP Display Ready", 1)
-        time.sleep(1.5)
 
         last_ips_displayed = {}
 
@@ -137,10 +177,10 @@ def main():
 
     except KeyboardInterrupt:
         print("\nShutting down...")
-        if buzzer:
+        if buzzer_initialized and buzzer: # Check if buzzer was successfully initialized
             buzzer.play_tone(200, 0.1) # Short low beep for shutdown
             buzzer.play_tone(150, 0.1)
-        if lcd:
+        if lcd_initialized and lcd: # Check if lcd was successfully initialized
             lcd.clear()
             lcd.backlight(True) # Ensure backlight is on for message
             lcd.message("System Off", 1)
@@ -148,27 +188,26 @@ def main():
             lcd.backlight(False) # Turn off backlight
             lcd.display_off()
     except Exception as e:
-        print(f"An error occurred: {e}")
-        if lcd:
+        print(f"An error occurred in main loop: {e}")
+        if lcd_initialized and lcd: # Check if lcd was successfully initialized
             lcd.clear()
             try:
-                lcd.message("Error Occurred", 1)
-                # Try to display a snippet of the error if it fits
-                error_str = str(e)[:16]
+                lcd.message("Runtime Error", 1)
+                error_str = str(e)[:16] # Display a snippet of the error
                 lcd.message(error_str, 2)
-            except Exception asex:
-                print(f"Further error during LCD error display: {asex}")
-        if buzzer:
+            except Exception as lcd_ex:
+                print(f"Further error attempting to display on LCD: {lcd_ex}")
+        if buzzer_initialized and buzzer: # Check if buzzer was successfully initialized
             try:
                 buzzer.alert_sound() # Play alert sound on error
-            except Exception as bex:
-                print(f"Error playing buzzer alert: {bex}")
+            except Exception as buzz_ex:
+                print(f"Error playing buzzer alert: {buzz_ex}")
     finally:
         print("Cleaning up GPIO...")
-        if buzzer: # Buzzer cleanup does not call GPIO.cleanup() itself
+        if buzzer_initialized and buzzer: # Buzzer cleanup does not call GPIO.cleanup() itself
             buzzer.cleanup()
         # LCD class does not directly use RPi.GPIO, so no specific cleanup for it here
-        # other than turning it off.
+        # other than turning it off (already done in KeyboardInterrupt if LCD was init).
         GPIO.cleanup() # Clean up all GPIO channels used
         print("GPIO cleanup complete. Exiting.")
 
