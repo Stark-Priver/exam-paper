@@ -80,12 +80,10 @@
         </div>
     </form>
 </div>
-{% endblock %} {# Closes the content block #}
 
-{% block scripts %}
-{{ super() }}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Ensure this script runs after the DOM is fully loaded.
     const openCameraBtn = document.getElementById('openCameraBtn');
     const capturePhotoBtn = document.getElementById('capturePhotoBtn');
     const retakePhotoBtn = document.getElementById('retakePhotoBtn');
@@ -172,4 +170,4 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
-{% endblock %}
+{% endblock %} {# This now closes the content block, with script inside it #}
