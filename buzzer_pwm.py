@@ -10,25 +10,21 @@ class PassiveBuzzer:
         self.buzzer_pin = buzzer_pin
         self.pwm = None
 
-        # Set up GPIO mode
-        # Using BCM mode for GPIO pin numbering
-        # Check current mode to avoid conflicts if already set by another module
-        current_gpio_mode = GPIO.getmode()
-        if current_gpio_mode is None:
-            GPIO.setmode(GPIO.BCM)
-            # print("GPIO mode set to BCM by Buzzer module.")
-        elif current_gpio_mode != GPIO.BCM:
-            # This case should ideally be handled by a central GPIO manager
-            # or ensure all modules agree on a mode.
-            # For now, we'll print a warning if a different mode is already set.
-            print(f"Warning: GPIO mode was already set to {current_gpio_mode}. Buzzer expected BCM.")
-            print("This might lead to incorrect pin assignments if not managed.")
-            # Attempting to switch mode here could break other parts of an application.
-            # The main script should manage GPIO mode setup.
-            # However, for standalone buzzer use, we might force it.
-            # For now, we assume the main script handles global GPIO.setmode(GPIO.BCM)
+        # GPIO.setmode will be handled by the main application script.
+        # This module assumes GPIO mode has been set to BCM.
+        # It also assumes GPIO.setup for the pin will be done by this module,
+        # but global cleanup will be handled by the main application.
 
-        GPIO.setup(self.buzzer_pin, GPIO.OUT)
+        try:
+            GPIO.setup(self.buzzer_pin, GPIO.OUT)
+        except RuntimeError as e:
+            # This can happen if GPIO.setmode() hasn't been called yet.
+            # Or if the pin is already in use with a conflicting setup.
+            print(f"Error setting up buzzer pin {self.buzzer_pin}: {e}")
+            print("Ensure GPIO.setmode(GPIO.BCM) is called in your main application before initializing the buzzer.")
+            raise # Re-raise the exception to signal failure to the caller
+
+        GPIO.output(self.buzzer_pin, GPIO.LOW) # Ensure buzzer is off initially
         GPIO.output(self.buzzer_pin, GPIO.LOW) # Ensure buzzer is off initially
 
     def _start_pwm(self, frequency, duty_cycle=50):
@@ -113,10 +109,12 @@ class PassiveBuzzer:
 if __name__ == '__main__':
     buzzer = None # Initialize to None for finally block
     try:
-        print("Initializing Buzzer...")
-        # GPIO.setmode(GPIO.BCM) # Ensure BCM mode is set for standalone test
+        # For standalone testing, we need to set GPIO mode and cleanup here.
+        # In an application, the main script would handle this.
+        GPIO.setmode(GPIO.BCM)
+        print("Initializing Buzzer (standalone test)...")
         buzzer = PassiveBuzzer(DEFAULT_BUZZER_PIN)
-        print(f"Buzzer Initialized on GPIO {DEFAULT_BUZZER_PIN}.")
+        print(f"Buzzer Initialized on GPIO {DEFAULT_BUZZER_PIN} (standalone test).")
 
         print("Playing a single tone (A4 - 440Hz for 0.5s)...")
         buzzer.play_tone(440, 0.5)
@@ -143,9 +141,9 @@ if __name__ == '__main__':
         print("\nTest interrupted by user.")
     finally:
         if buzzer:
-            print("Cleaning up buzzer GPIO...")
-            buzzer.cleanup()
-        # GPIO.cleanup() # Clean up all GPIO channels if this script was the sole GPIO user
-        print("Buzzer test finished.")
+            print("Cleaning up buzzer GPIO (standalone test)...")
+            buzzer.cleanup() # This now only stops PWM and sets pin LOW
+        GPIO.cleanup() # Full cleanup for standalone test
+        print("Buzzer test finished (standalone test).")
 
 # End of buzzer_pwm.py
