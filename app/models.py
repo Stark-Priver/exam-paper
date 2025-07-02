@@ -39,9 +39,22 @@ class Exam(db.Model):
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
     logs = db.relationship('Log', backref='exam', lazy=True)
+    # Association table for Student <-> Exam many-to-many relationship
+    registered_students = db.relationship(
+        'Student',
+        secondary='exam_registrations',
+        lazy='subquery',
+        backref=db.backref('registered_for_exams', lazy=True)
+    )
 
     def __repr__(self):
         return f'<Exam {self.subject} on {self.date}>'
+
+# exam_registrations association table
+exam_registrations = db.Table('exam_registrations',
+    db.Column('student_id', db.Integer, db.ForeignKey('student.id'), primary_key=True),
+    db.Column('exam_id', db.Integer, db.ForeignKey('exam.id'), primary_key=True)
+)
 
 class Log(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -11,6 +11,7 @@ from flask import current_app
 CACHED_KNOWN_FACES = {
     "ids": [],
     "names": [],
+    "student_id_numbers": [], # Added student_id_numbers
     "embeddings": []
 }
 
@@ -31,6 +32,7 @@ def load_known_faces_from_db():
         
         CACHED_KNOWN_FACES["ids"] = [student.id for student in students_with_embeddings]
         CACHED_KNOWN_FACES["names"] = [student.name for student in students_with_embeddings]
+        CACHED_KNOWN_FACES["student_id_numbers"] = [student.student_id_number for student in students_with_embeddings]
         CACHED_KNOWN_FACES["embeddings"] = [student.face_embedding for student in students_with_embeddings]
         
         count = len(CACHED_KNOWN_FACES["ids"])
@@ -63,25 +65,31 @@ def find_and_log_recognized_faces(frame_rgb, exam_id):
     """
     if not CACHED_KNOWN_FACES["embeddings"]:
         if current_app:
-            current_app.logger.warning("No known faces in cache to compare against.")
-        else:
-            print("(No app context) No known faces in cache to compare against.")
+            current_app.logger.warning("No known faces in cache to compare against for exam_id %s.", exam_id)
         face_locations = face_recognition.face_locations(frame_rgb)
-        return [{'name': 'Unknown', 'student_id': None, 'box': box} for box in face_locations]
+        return [{'name': 'Unknown', 'student_id': None, 'student_id_number': None, 'box': box, 'status': 'Unknown_Student'} for box in face_locations]
 
-    face_locations = face_recognition.face_locations(frame_rgb) # Uses HOG model by default
-    face_encodings = face_recognition.face_encodings(frame_rgb, face_locations) # Computes 128-d embeddings
+    face_locations = face_recognition.face_locations(frame_rgb)
+    face_encodings = face_recognition.face_encodings(frame_rgb, face_locations)
 
     detected_faces_data = []
+    current_exam = Exam.query.get(exam_id)
+    if not current_exam:
+        if current_app:
+            current_app.logger.error(f"Exam with ID {exam_id} not found in find_and_log_recognized_faces.")
+        return [{'name': 'Error', 'student_id': None, 'student_id_number': None, 'box': box, 'status': 'Error_Exam_Not_Found'} for box in face_locations]
+
+    registered_student_ids_for_exam = {s.id for s in current_exam.registered_students}
 
     for i, face_encoding in enumerate(face_encodings):
         current_face_box = face_locations[i]
         name = "Unknown"
         student_id_recognized = None
+        student_id_number_recognized = None
+        recognition_status = "Unknown_Student"
 
         matches = face_recognition.compare_faces(CACHED_KNOWN_FACES["embeddings"], face_encoding, tolerance=0.50)
         
-        best_match_index = -1
         if True in matches:
             face_distances = face_recognition.face_distance(CACHED_KNOWN_FACES["embeddings"], face_encoding)
             best_match_index = np.argmin(face_distances)
@@ -89,25 +97,29 @@ def find_and_log_recognized_faces(frame_rgb, exam_id):
             if matches[best_match_index]:
                 name = CACHED_KNOWN_FACES["names"][best_match_index]
                 student_id_recognized = CACHED_KNOWN_FACES["ids"][best_match_index]
+                student_id_number_recognized = CACHED_KNOWN_FACES["student_id_numbers"][best_match_index]
+
+                if student_id_recognized in registered_student_ids_for_exam:
+                    recognition_status = "Verified_Eligible"
+                else:
+                    recognition_status = "Verified_Not_Eligible"
                 
-                was_logged = _log_student_attendance(student_id_recognized, exam_id, name)
-                if was_logged and current_app:
-                    current_app.logger.info(f"Attendance logged for {name} (ID: {student_id_recognized}) for Exam ID: {exam_id}.")
-            else: 
-                name = "Unknown"
-                student_id_recognized = None
+                _log_student_attendance(student_id_recognized, exam_id, name, recognition_status)
         
         detected_faces_data.append({
             'name': name,
             'student_id': student_id_recognized,
-            'box': current_face_box
+            'student_id_number': student_id_number_recognized,
+            'box': current_face_box,
+            'status': recognition_status
         })
-        
+
     return detected_faces_data
 
-def _log_student_attendance(student_id, exam_id, student_name_for_log):
+def _log_student_attendance(student_id, exam_id, student_name_for_log, status_to_log):
     """
-    Internal helper to log student attendance if not logged recently for the given exam.
+    Internal helper to log student attendance if not logged recently for the given exam,
+    with the determined status.
     Returns True if logged, False otherwise.
     """
     global RECENTLY_LOGGED_STUDENTS
@@ -120,29 +132,20 @@ def _log_student_attendance(student_id, exam_id, student_name_for_log):
 
     if last_log_time is None or (now - last_log_time) > timedelta(seconds=LOG_COOLDOWN_SECONDS):
         try:
-            student_exists = Student.query.get(student_id)
-            exam_exists = Exam.query.get(exam_id)
-
-            if not student_exists:
-                if current_app:
-                    current_app.logger.warning(f"Attempted to log non-existent student ID: {student_id}")
-                return False
-            if not exam_exists:
-                if current_app:
-                    current_app.logger.warning(f"Attempted to log for non-existent exam ID: {exam_id}")
-                return False
-
-            log_entry = Log(student_id=student_id, exam_id=exam_id, timestamp=now, status="Verified")
+            # Student and Exam objects should exist if we've reached this point through valid IDs.
+            # No need to query Student.query.get(student_id) again if student_id is from cache.
+            # Exam.query.get(exam_id) was already done in the calling function.
+            log_entry = Log(student_id=student_id, exam_id=exam_id, timestamp=now, status=status_to_log)
             db.session.add(log_entry)
             db.session.commit()
             RECENTLY_LOGGED_STUDENTS[exam_id][student_id] = now
-            return True 
+            if current_app:
+                current_app.logger.info(f"Attendance logged for {student_name_for_log} (ID: {student_id}) for Exam ID: {exam_id} with status: {status_to_log}.")
+            return True
         except Exception as e:
             db.session.rollback()
             if current_app:
-                current_app.logger.error(f"Error logging attendance for Student {student_name_for_log} (ID: {student_id}): {e}")
-            else:
-                print(f"(No app context) Error logging attendance for Student {student_name_for_log} (ID: {student_id}): {e}")
+                current_app.logger.error(f"Error logging attendance for Student {student_name_for_log} (ID: {student_id}), Status: {status_to_log}: {e}")
             return False
     return False
 

@@ -36,6 +36,11 @@ def get_engine_url():
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
+
+# Ensure all models are imported for Alembic's autogenerate pass
+from app.models import *
+# The above import helps Alembic detect tables defined as db.Table directly, like association tables.
+
 config.set_main_option('sqlalchemy.url', get_engine_url())
 target_db = current_app.extensions['migrate'].db
 
