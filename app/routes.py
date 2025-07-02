@@ -12,6 +12,8 @@ from app.face_rec_utils import (
     clear_recent_logs_cache
 )
 import os
+import logging # Added for fallback logger
+from datetime import datetime, timedelta
 import cv2 # For OpenCV
 import numpy as np
 # import face_recognition # Already used in face_rec_utils & utils
@@ -20,6 +22,13 @@ bp = Blueprint('main', __name__)
 
 # Global camera object. Handled by initialize_camera and release_camera.
 camera = None 
+
+# Dictionary to store the latest recognition status for each active exam session
+# Not suitable for multi-worker production environments without a proper shared cache (e.g., Redis, Memcached)
+# For simplicity in this context, we'll use a global dict.
+# Structure: {exam_id: {"name": "Student Name", "status": "StatusString", "timestamp": datetime}}
+LATEST_RECOGNITION_STATUS = {}
+RECOGNITION_STATUS_TTL_SECONDS = 10 # How long to keep a status before considering it stale
 
 @bp.route('/uploads/<path:filename>')
 def uploaded_file(filename):
@@ -306,17 +315,55 @@ def generate_frames(exam_id):
             
             # Use app_instance for context if needed by find_and_log_recognized_faces
             # or ensure find_and_log_recognized_faces uses its own logger or passed logger
-            recognized_data = find_and_log_recognized_faces(rgb_frame, exam_id) # This util uses current_app.logger internally
+            recognized_data_list = find_and_log_recognized_faces(rgb_frame, exam_id) # This util uses current_app.logger internally
 
-            for data in recognized_data:
+            # Update LATEST_RECOGNITION_STATUS with the most relevant status
+            # For simplicity, if multiple faces, pick the first "interesting" one (not just unknown)
+            # or the first one if all are unknown.
+            primary_status_to_report = None
+            if recognized_data_list:
+                # Prioritize non-unknown students
+                eligible_or_not_eligible = [d for d in recognized_data_list if d['status'] != 'Unknown_Student' and d['student_id'] is not None]
+                if eligible_or_not_eligible:
+                    primary_status_to_report = eligible_or_not_eligible[0]
+                else: # All are unknown or errors
+                    primary_status_to_report = recognized_data_list[0]
+
+                if primary_status_to_report:
+                    LATEST_RECOGNITION_STATUS[exam_id] = {
+                        "name": primary_status_to_report['name'],
+                        "status": primary_status_to_report['status'],
+                        # student_id_number is now directly available from find_and_log_recognized_faces
+                        "student_id_number": primary_status_to_report.get('student_id_number'),
+                        "timestamp": datetime.utcnow()
+                    }
+
+            # Add a comment explaining the primary_status_to_report logic
+            # The primary_status_to_report aims to show the most "important" face status if multiple faces are detected.
+            # It prioritizes known students (eligible or not) over unknown faces for the summary status.
+            for data in recognized_data_list:
                 top, right, bottom, left = data['box']
-                name = data['name']
-                student_id = data['student_id']
-                color = (0, 255, 0) if student_id else (0, 0, 255)
+                name_display = data['name']
+                status_display = data['status'] # e.g. Verified_Eligible, Unknown_Student
+
+                # Determine color based on status
+                if status_display == 'Verified_Eligible':
+                    color = (0, 255, 0)  # Green
+                    name_prefix = ""
+                elif status_display == 'Verified_Not_Eligible':
+                    color = (0, 0, 255)  # Red
+                    name_prefix = "NOT ELIGIBLE: "
+                elif status_display == 'Unknown_Student':
+                    color = (0, 165, 255) # Orange for unknown
+                    name_prefix = "UNKNOWN: "
+                else: # Error or other states
+                    color = (255, 0, 255) # Magenta for errors
+                    name_prefix = "ERROR: "
+
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
                 cv2.rectangle(frame, (left, bottom - 25), (right, bottom), color, cv2.FILLED)
                 font = cv2.FONT_HERSHEY_DUPLEX
-                cv2.putText(frame, name, (left + 6, bottom - 6), font, 0.8, (255, 255, 255), 1)
+                cv2.putText(frame, f"{name_prefix}{name_display}", (left + 6, bottom - 6), font, 0.6, (255, 255, 255), 1)
 
             ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ret:
@@ -363,7 +410,48 @@ def stop_video_feed():
     # Use current_app.logger as this is a direct request context
     release_camera(current_app.logger) 
     flash("Camera session ended and resources released.", "info")
+
+    exam_id_to_clear = None
+    if request.is_json:
+        data = request.get_json()
+        if data:
+            exam_id_to_clear = data.get('exam_id')
+    elif request.form: # Fallback if it was sent as form data for some reason
+        exam_id_to_clear = request.form.get('exam_id')
+
+    if exam_id_to_clear:
+        try:
+            # Ensure exam_id_to_clear is an integer if it comes from JSON as string
+            LATEST_RECOGNITION_STATUS.pop(int(exam_id_to_clear), None)
+            logger_instance = current_app.logger if current_app else logging.getLogger(__name__)
+            logger_instance.info(f"Cleared LATEST_RECOGNITION_STATUS for exam_id: {exam_id_to_clear}")
+        except ValueError:
+            logger_instance = current_app.logger if current_app else logging.getLogger(__name__)
+            logger_instance.warning(f"Could not parse exam_id '{exam_id_to_clear}' to int for clearing status.")
+
     return {"status": "success", "message": "Camera released."}, 200
+
+@bp.route('/live_auth_status/<int:exam_id>')
+@login_required
+def live_auth_status(exam_id):
+    """Endpoint for the frontend to poll for the latest recognition status."""
+    status_info = LATEST_RECOGNITION_STATUS.get(exam_id)
+
+    if status_info:
+        # Check if the status is stale
+        if (datetime.utcnow() - status_info.get("timestamp", datetime.min)) > timedelta(seconds=RECOGNITION_STATUS_TTL_SECONDS):
+            # If stale, remove it and report no current status
+            LATEST_RECOGNITION_STATUS.pop(exam_id, None)
+            return {"status": "NoDetection", "name": None, "student_id_number": None}, 200
+
+        return {
+            "name": status_info.get("name", "Unknown"),
+            "status": status_info.get("status", "Unknown_Student"),
+            "student_id_number": status_info.get("student_id_number", None)
+        }, 200
+    else:
+        # No status recorded yet for this exam, or it was cleared/stale
+        return {"status": "NoDetection", "name": None, "student_id_number": None}, 200
 
 # --- Log Viewing Route ---
 @bp.route('/view_logs')

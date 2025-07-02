@@ -17,8 +17,21 @@
                 {# The video feed will be loaded here by the <img> tag pointing to /video_feed/<exam_id> #}
                 <img id="videoFeed" src="{{ url_for('main.video_feed', exam_id=exam.id) }}" class="embed-responsive-item" alt="Live Camera Feed">
             </div>
+
+            <!-- Authentication Status Display Area -->
+            <div id="authStatusDisplay" class="mt-3 p-3 border rounded text-center" style="min-height: 120px;">
+                <h4>Live Status</h4>
+                <div id="statusIndicator" class="mx-auto mb-2" style="width: 25px; height: 25px; border-radius: 50%; background-color: #ccc; border: 1px solid #666;"></div>
+                <p class="mb-0"><strong>Name:</strong> <span id="statusName">---</span></p>
+                <p class="mb-0"><strong>ID:</strong> <span id="statusStudentId">---</span></p>
+                <p class="mb-0"><strong>Eligibility:</strong> <span id="statusText">Awaiting detection...</span></p>
+            </div>
+            <audio id="alertBeep" src="{{ url_for('static', filename='audio/beep.mp3') }}" preload="auto"></audio>
+            {# Ensure you have a beep.mp3 or similar in static/audio. If not, this will fail silently or can be removed. #}
+            <!-- End Authentication Status Display Area -->
+
             <div id="statusMessages" class="mt-3">
-                {# Status messages like "Student X verified" could appear here, though they are often drawn on the video feed itself #}
+                {# Status messages from cache refresh etc. can still appear here #}
             </div>
         </div>
     </div>
@@ -94,6 +107,109 @@ document.addEventListener('DOMContentLoaded', function() {
     // TODO: Consider WebSocket for real-time log updates on this page if needed,
     // instead of just relying on names appearing on video.
     // For now, recent logs list is static.
+
+    // --- Live Auth Status Polling ---
+    const examId = {{ exam.id }};
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusName = document.getElementById('statusName');
+    const statusStudentId = document.getElementById('statusStudentId');
+    const statusText = document.getElementById('statusText');
+    const alertBeep = document.getElementById('alertBeep');
+    let pollingInterval;
+    let isFeedActive = true; // Assume feed is active initially
+
+    function fetchAuthStatus() {
+        if (!isFeedActive) return; // Don't poll if feed is meant to be stopped
+
+        fetch(`/live_auth_status/${examId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                statusName.textContent = data.name || '---';
+                statusStudentId.textContent = data.student_id_number || '---';
+                let currentStatusText = "Awaiting detection...";
+                let indicatorColor = '#ccc'; // Grey for no detection/stale
+
+                switch(data.status) {
+                    case 'Verified_Eligible':
+                        currentStatusText = 'Eligible';
+                        indicatorColor = 'green';
+                        break;
+                    case 'Verified_Not_Eligible':
+                        currentStatusText = 'Not Eligible for this Exam';
+                        indicatorColor = 'red';
+                        if (alertBeep && alertBeep.readyState >= 2) alertBeep.play().catch(e => console.warn("Beep play failed:", e));
+                        break;
+                    case 'Unknown_Student':
+                        currentStatusText = 'Unknown Student';
+                        indicatorColor = 'orange'; // Changed to orange for Unknown
+                        if (alertBeep && alertBeep.readyState >= 2) alertBeep.play().catch(e => console.warn("Beep play failed:", e));
+                        break;
+                    case 'Error_Exam_Not_Found':
+                        currentStatusText = 'Error: Exam data missing.';
+                        indicatorColor = 'purple';
+                        break;
+                    case 'NoDetection':
+                        currentStatusText = 'No active face detection.';
+                        break;
+                    default:
+                        currentStatusText = `Status: ${data.status || '---'}`;
+                        break;
+                }
+                statusText.textContent = currentStatusText;
+                statusIndicator.style.backgroundColor = indicatorColor;
+            })
+            .catch(error => {
+                console.error('Error fetching auth status:', error);
+                statusText.textContent = 'Error fetching status.';
+                statusIndicator.style.backgroundColor = 'purple'; // Purple for error fetching status
+            });
+    }
+
+    function startPolling() {
+        if (videoFeedImg.src && videoFeedImg.src !== "" && isFeedActive) {
+            fetchAuthStatus();
+            pollingInterval = setInterval(fetchAuthStatus, 2000); // Poll every 2 seconds
+        }
+    }
+
+    function stopPolling() {
+        clearInterval(pollingInterval);
+    }
+
+    // Button to end session (already exists, but let's ensure polling stops)
+    // The existing "End Session & Select Another Exam" button is an <a> tag.
+    // If it were a button triggering a JS stop, we'd hook into it.
+    // For now, relying on beforeunload.
+
+    // If there's an explicit stop button for the feed (not just navigating away):
+    // Example: if you add a <button id="explicitStopBtn">Stop Feed</button>
+    // document.getElementById('explicitStopBtn')?.addEventListener('click', function() {
+    //     isFeedActive = false;
+    //     stopPolling();
+    //     videoFeedImg.src = ""; // Clear video feed
+    //     // Optionally call backend to release camera if not handled by navigation
+    //     fetch("{{ url_for('main.stop_video_feed') }}", { /* ... */ });
+    // });
+
+
+    // Start polling when page loads
+    startPolling();
+
+    // Stop polling and attempt to notify backend when user navigates away or closes tab
+    window.addEventListener('beforeunload', function(e) {
+        isFeedActive = false;
+        stopPolling();
+        // Check if video feed was active before trying to stop it
+        if (videoFeedImg.src && videoFeedImg.src.includes('/video_feed/')) {
+             navigator.sendBeacon("{{ url_for('main.stop_video_feed') }}", JSON.stringify({ exam_id: examId, from_beacon: true }));
+        }
+    });
+     // --- End Live Auth Status Polling ---
 });
 </script>
 {% endblock %}
