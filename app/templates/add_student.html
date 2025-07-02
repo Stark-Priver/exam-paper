@@ -46,8 +46,27 @@
                 </div>
             {% endif %}
             <small class="form-text text-muted">
-                Upload a clear frontal face picture. Allowed formats: JPG, PNG.
+                Upload a clear frontal face picture (JPG, PNG) OR use the camera option below.
             </small>
+        </div>
+
+        <div class="form-group">
+            <label>Camera Option</label>
+            <div>
+                <button type="button" id="openCameraBtn" class="btn btn-info mb-2"><i class="fas fa-camera"></i> Open Camera</button>
+            </div>
+            <div id="cameraContainer" style="display: none; position: relative; width: 320px; height: 240px; border: 1px solid #ccc; margin-bottom: 10px;">
+                <video id="videoElement" width="320" height="240" autoplay style="display: block;"></video>
+                <button type="button" id="capturePhotoBtn" class="btn btn-primary" style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);">
+                    <i class="fas fa-camera-retro"></i> Capture Photo
+                </button>
+            </div>
+            <div id="capturePreviewContainer" style="display: none; margin-top:10px;">
+                <label>Captured Photo Preview:</label><br>
+                <img id="capturedImagePreview" src="#" alt="Captured Photo" style="max-width: 320px; max-height: 240px; border: 1px solid #ddd;"/>
+                <button type="button" id="retakePhotoBtn" class="btn btn-warning ml-2"><i class="fas fa-redo"></i> Retake</button>
+            </div>
+            <input type="hidden" name="captured_image_data" id="captured_image_data">
         </div>
 
         <hr>
@@ -61,4 +80,95 @@
         </div>
     </form>
 </div>
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const openCameraBtn = document.getElementById('openCameraBtn');
+    const capturePhotoBtn = document.getElementById('capturePhotoBtn');
+    const retakePhotoBtn = document.getElementById('retakePhotoBtn');
+    const videoElement = document.getElementById('videoElement');
+    const cameraContainer = document.getElementById('cameraContainer');
+    const capturedImagePreview = document.getElementById('capturedImagePreview');
+    const capturePreviewContainer = document.getElementById('capturePreviewContainer');
+    const capturedImageDataInput = document.getElementById('captured_image_data');
+    const photoFileInput = document.querySelector('input[type="file"][name="photo"]');
+
+    let stream = null;
+
+    openCameraBtn.addEventListener('click', async () => {
+        if (typeof navigator.mediaDevices.getUserMedia !== 'function') {
+            alert('Camera access is not supported by your browser.');
+            return;
+        }
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+            videoElement.srcObject = stream;
+            cameraContainer.style.display = 'block';
+            openCameraBtn.style.display = 'none';
+            capturePhotoBtn.style.display = 'inline-block'; // Or 'block'
+            capturePreviewContainer.style.display = 'none'; // Hide preview when camera opens
+            capturedImageDataInput.value = ''; // Clear any previous capture
+            photoFileInput.value = ''; // Clear file input if camera is used
+        } catch (err) {
+            console.error("Error accessing camera: ", err);
+            alert('Could not access the camera. Please ensure permission is granted and no other application is using it.');
+        }
+    });
+
+    capturePhotoBtn.addEventListener('click', () => {
+        if (!stream) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        capturedImagePreview.src = dataUrl;
+        capturedImageDataInput.value = dataUrl;
+
+        capturePreviewContainer.style.display = 'block';
+        cameraContainer.style.display = 'none'; // Hide camera view
+        capturePhotoBtn.style.display = 'none';
+        retakePhotoBtn.style.display = 'inline-block';
+
+        // Stop the camera stream
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        videoElement.srcObject = null; // Clear video element source
+        openCameraBtn.style.display = 'inline-block'; // Show "Open Camera" again
+                                                   // or a dedicated "Retake" button could show Open Camera
+    });
+
+    retakePhotoBtn.addEventListener('click', () => {
+        capturedImageDataInput.value = '';
+        capturedImagePreview.src = '#';
+        capturePreviewContainer.style.display = 'none';
+        retakePhotoBtn.style.display = 'none';
+        openCameraBtn.click(); // Re-open camera
+    });
+
+    // If a file is selected, clear the captured image data
+    photoFileInput.addEventListener('change', function() {
+        if (this.files && this.files.length > 0) {
+            capturedImageDataInput.value = '';
+            capturedImagePreview.src = '#';
+            capturePreviewContainer.style.display = 'none';
+            if (stream) { // Stop camera if it was open
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+                videoElement.srcObject = null;
+                cameraContainer.style.display = 'none';
+                openCameraBtn.style.display = 'inline-block';
+                capturePhotoBtn.style.display = 'none';
+            }
+        }
+    });
+});
+</script>
 {% endblock %}
