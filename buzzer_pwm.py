@@ -90,6 +90,14 @@ class PassiveBuzzer:
         """Plays an alert sound."""
         self.beep(repeat=3, tone_duration=0.05, pause_duration=0.05, frequency=2000)
 
+    def confirmation_beep(self, frequency=1500, duration=0.1):
+        """Plays a short confirmation beep."""
+        self.play_tone(frequency, duration)
+
+    def double_confirmation_beep(self, frequency=1500, tone_duration=0.07, pause_duration=0.07):
+        """Plays two short confirmation beeps."""
+        self.beep(repeat=2, tone_duration=tone_duration, pause_duration=pause_duration, frequency=frequency)
+
     def cleanup(self):
         """Cleans up GPIO resources used by the buzzer."""
         self._stop_pwm()
