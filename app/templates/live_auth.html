@@ -68,7 +68,6 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch("{{ url_for('main.refresh_face_cache') }}", {
                 method: 'POST',
                 headers: {
-                    // 'X-CSRFToken': '{{ csrf_token() }}' // If CSRF needed
                 }
             })
             .then(response => response.json())

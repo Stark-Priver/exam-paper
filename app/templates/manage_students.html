@@ -34,7 +34,7 @@
                     <td>{{ student.name }}</td>
                     <td>
                         {% if student.face_image_path %}
-                            <img src="{{ url_for('static', filename='../data/student_images/' + student.face_image_path) }}" alt="Photo of {{ student.name }}" class="img-thumbnail" style="max-width: 60px; max-height: 60px; object-fit: cover;">
+                            <img src="{{ url_for('main.uploaded_file', filename=student.face_image_path) }}" alt="Photo of {{ student.name }}" class="img-thumbnail" style="max-width: 60px; max-height: 60px; object-fit: cover;">
                         {% else %}
                             <span class="text-muted">No Photo</span>
                         {% endif %}

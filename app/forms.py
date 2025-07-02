@@ -14,29 +14,36 @@ class LoginForm(FlaskForm):
 class StudentForm(FlaskForm):
     student_id_number = StringField('Student ID Number', validators=[DataRequired(), Length(max=20)])
     name = StringField('Full Name', validators=[DataRequired(), Length(max=100)])
-    # For adding a student, photo is required. For editing, it's optional.
-    # We will handle this distinction in the route logic or by using two different forms if it gets complex.
-    # For now, let's make it conditionally required.
-    photo = FileField('Student Photo (JPG, PNG)', validators=[
-        FileAllowed(current_app.config['ALLOWED_EXTENSIONS'], 'Only JPG and PNG images are allowed!')
-    ])
+    photo = FileField('Student Photo (JPG, PNG)') # Define field without context-dependent validators initially
     submit = SubmitField('Save Student')
 
     def __init__(self, original_student_id_number=None, *args, **kwargs):
         super(StudentForm, self).__init__(*args, **kwargs)
         self.original_student_id_number = original_student_id_number
-        if not self.photo.validators: # If no validators set (e.g. during edit and no new photo)
-            self.photo.validators = []
-
-        # If creating a new student (no original_student_id_number), photo is required
-        if not original_student_id_number:
-            self.photo.validators.insert(0, FileRequired(message='Photo is required for new students.'))
+        
+        # Dynamically add/update validators for the photo field here
+        # This ensures current_app is available because __init__ is called when an app context exists
+        current_photo_validators = []
+        if not original_student_id_number: # If creating a new student, photo is required
+            current_photo_validators.append(FileRequired(message='Photo is required for new students.'))
         else: # If editing, photo is optional
-            self.photo.validators.insert(0, Optional())
-
+            current_photo_validators.append(Optional())
+        
+        # Add FileAllowed validator using current_app.config
+        # This must be done after super().__init__() and within an app context scenario
+        if current_app:
+            allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', {'png', 'jpg', 'jpeg'})
+            current_photo_validators.append(FileAllowed(allowed_extensions, 'Only JPG and PNG images are allowed!'))
+        else:
+            # Fallback or raise error if current_app is somehow not available, though unlikely here
+            # For safety, you could define default extensions if current_app isn't found,
+            # but the issue is that FileAllowed needs *some* iterable of extensions.
+            # This else block is more for robustness; the core issue is delaying current_app access.
+            current_photo_validators.append(FileAllowed({'png', 'jpg', 'jpeg'}, 'Only JPG and PNG images are allowed! (default)'))
+            
+        self.photo.validators = current_photo_validators
 
     def validate_student_id_number(self, student_id_number):
-        # Check if student_id_number is unique, unless it's the student's current ID number (during edit)
         if student_id_number.data != self.original_student_id_number:
             student = Student.query.filter_by(student_id_number=student_id_number.data).first()
             if student:

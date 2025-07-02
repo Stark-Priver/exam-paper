@@ -50,8 +50,6 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch("{{ url_for('main.refresh_face_cache') }}", {
                 method: 'POST',
                 headers: {
-                    // If you have CSRF protection enabled globally via Flask-WTF
-                    // 'X-CSRFToken': '{{ csrf_token() }}'
                 }
             })
             .then(response => response.json())
