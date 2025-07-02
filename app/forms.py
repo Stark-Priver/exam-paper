@@ -23,11 +23,7 @@ class StudentForm(FlaskForm):
         
         # Dynamically add/update validators for the photo field here
         # This ensures current_app is available because __init__ is called when an app context exists
-        current_photo_validators = []
-        if not original_student_id_number: # If creating a new student, photo is required
-            current_photo_validators.append(FileRequired(message='Photo is required for new students.'))
-        else: # If editing, photo is optional
-            current_photo_validators.append(Optional())
+        current_photo_validators = [Optional()] # Always optional, will validate in route
         
         # Add FileAllowed validator using current_app.config
         # This must be done after super().__init__() and within an app context scenario

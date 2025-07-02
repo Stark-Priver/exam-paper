@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 import cv2 # For OpenCV
 import numpy as np
 # import face_recognition # Already used in face_rec_utils & utils
+import base64
+import io
 
 bp = Blueprint('main', __name__)
 
@@ -130,19 +132,56 @@ def add_student():
     form = StudentForm()
     if form.validate_on_submit():
         photo_file = form.photo.data
-        image_filename, embedding_or_error = process_student_image(photo_file, form.student_id_number.data)
+        captured_image_data_b64 = request.form.get('captured_image_data')
 
-        if image_filename is None: # Error occurred or no face found
+        image_to_process = None
+        image_source_type = None # 'fileupload' or 'capture'
+
+        if captured_image_data_b64 and captured_image_data_b64.startswith('data:image/jpeg;base64,'):
+            base64_data = captured_image_data_b64.split(',')[1]
+            try:
+                image_bytes = base64.b64decode(base64_data)
+                image_to_process = io.BytesIO(image_bytes)
+                image_source_type = 'capture'
+            except Exception as e:
+                flash(f'Error decoding captured image: {str(e)}', 'danger')
+                return render_template('add_student.html', title='Add Student', form=form)
+        elif photo_file and photo_file.filename:
+            image_to_process = photo_file
+            image_source_type = 'fileupload'
+
+        if not image_to_process:
+            flash('No photo provided. Please upload a file or capture a photo.', 'danger')
+            return render_template('add_student.html', title='Add Student', form=form)
+
+        # Construct a filename for the captured image if it's from BytesIO
+        # process_student_image will expect a filename if it's saving the file.
+        # We can pass the source_type to process_student_image if it needs to handle BytesIO differently.
+        # For now, process_student_image is expected to be adapted (next step).
+
+        # If image_to_process is BytesIO, we might need to give it a pseudo-filename
+        # or the process_student_image function needs to handle it.
+        # Let's assume process_student_image will be adapted to handle BytesIO directly
+        # and generate its own filename for captures.
+
+        image_filename, embedding_or_error = process_student_image(
+            image_to_process,
+            form.student_id_number.data,
+            source_type=image_source_type # Pass source_type for context
+        )
+
+        if image_filename is None:
             flash(f'Could not process image: {embedding_or_error}', 'danger')
         else:
             student = Student(
                 student_id_number=form.student_id_number.data,
                 name=form.name.data,
                 face_image_path=image_filename,
-                face_embedding=embedding_or_error # This is the actual embedding
+                face_embedding=embedding_or_error
             )
             db.session.add(student)
             db.session.commit()
+            clear_face_cache() # Ensure the new student is loaded on next recognition
             flash('Student added successfully with face data!', 'success')
             return redirect(url_for('main.manage_students'))
             
