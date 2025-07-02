@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, Response, current_app, send_from_directory
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import User, Student, Exam, Log
-from app.forms import LoginForm, StudentForm, ExamForm
+from app.models import User, Student, Exam, Log, exam_registrations
+from app.forms import LoginForm, StudentForm, ExamForm, ExamRegistrationForm
 from app import db
 from app.utils import process_student_image, remove_student_image
 from app.face_rec_utils import (
@@ -249,6 +249,47 @@ def delete_exam(exam_id):
     flash('Exam and associated logs deleted successfully.', 'success')
     return redirect(url_for('main.manage_exams'))
 
+@bp.route('/manage_exam_registrations/<int:exam_id>', methods=['GET', 'POST'])
+@login_required
+def manage_exam_registrations(exam_id):
+    exam = Exam.query.get_or_404(exam_id)
+    form = ExamRegistrationForm()
+
+    if form.validate_on_submit():
+        # Clear existing registrations for this exam
+        exam.registered_students = []
+
+        student_id_numbers_str = form.students.data
+        student_id_numbers_list = [sid.strip() for sid in student_id_numbers_str.split(',') if sid.strip()]
+
+        not_found_students = []
+        registered_count = 0
+
+        for sid_num in student_id_numbers_list:
+            student = Student.query.filter_by(student_id_number=sid_num).first()
+            if student:
+                exam.registered_students.append(student)
+                registered_count += 1
+            else:
+                not_found_students.append(sid_num)
+
+        db.session.commit()
+
+        if not_found_students:
+            flash(f'Successfully registered {registered_count} students. Could not find students with ID numbers: {", ".join(not_found_students)}.', 'warning')
+        else:
+            flash(f'Successfully registered {registered_count} students for the exam: {exam.subject}.', 'success')
+        return redirect(url_for('main.manage_exam_registrations', exam_id=exam_id))
+
+    elif request.method == 'GET':
+        # Populate form with currently registered students
+        form.students.data = ", ".join([s.student_id_number for s in exam.registered_students])
+
+    all_students = Student.query.order_by(Student.name).all() # For display or a selection helper
+    return render_template('manage_exam_registrations.html', title=f"Manage Registrations for {exam.subject}",
+                           exam=exam, form=form, all_students=all_students)
+
+
 # --- Facial Recognition and Authentication Routes ---
 
 @bp.route('/refresh_face_cache', methods=['POST'])
@@ -458,7 +499,26 @@ def live_auth_status(exam_id):
 @login_required
 def view_logs():
     page = request.args.get('page', 1, type=int)
-    
+    sort_by = request.args.get('sort_by', 'timestamp')
+    sort_order = request.args.get('sort_order', 'desc')
+
+    # Define valid sortable columns to prevent arbitrary column sorting
+    sortable_columns = {
+        'log_id': Log.id,
+        'student_name': Student.name,
+        'student_id_number': Student.student_id_number,
+        'exam_subject': Exam.subject,
+        'exam_date': Exam.date,
+        'timestamp': Log.timestamp,
+        'status': Log.status
+    }
+
+    if sort_by not in sortable_columns:
+        sort_by = 'timestamp' # Default sort column
+
+    sort_column = sortable_columns[sort_by]
+
+    # Base query
     query = db.session.query(
         Log.id.label('log_id'),
         Log.timestamp,
@@ -469,10 +529,42 @@ def view_logs():
         Exam.date.label('exam_date')
     ).join(Student, Log.student_id == Student.id).join(Exam, Log.exam_id == Exam.id)
 
-    logs_page = query.order_by(Log.timestamp.desc()).paginate(page=page, per_page=15)
+    # Apply sorting
+    if sort_order == 'asc':
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc()) # Default to desc
+
+    # Filtering (keeping existing filter logic if any, or add as needed)
+    filter_date_str = request.args.get('filter_date')
+    filter_exam_id = request.args.get('filter_exam_id')
+    filter_student_id = request.args.get('filter_student_id')
+
+    available_exams = Exam.query.order_by(Exam.subject).all()
+    available_students = Student.query.order_by(Student.name).all()
+
+    if filter_date_str:
+        try:
+            filter_date = datetime.strptime(filter_date_str, '%Y-%m-%d').date()
+            query = query.filter(Exam.date == filter_date)
+        except ValueError:
+            flash('Invalid date format for filter. Please use YYYY-MM-DD.', 'warning')
+
+    if filter_exam_id:
+        query = query.filter(Exam.id == filter_exam_id)
+
+    if filter_student_id:
+        query = query.filter(Student.id == filter_student_id)
+
+
+    logs_page = query.paginate(page=page, per_page=15)
     
     return render_template(
         'view_logs.html', 
         title="Authentication Logs", 
-        logs_page=logs_page
+        logs_page=logs_page,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        available_exams=available_exams, # Pass for filter dropdown
+        available_students=available_students # Pass for filter dropdown
     )
