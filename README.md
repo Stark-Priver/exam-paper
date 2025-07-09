@@ -6,21 +6,22 @@ This project is a Flask-based web application for managing student attendance us
 
 **Core Application (Flask Web Interface):**
 -   Admin login and dashboard.
--   Student Management: Add, edit, delete students with photo uploads for facial recognition.
--   Exam Management: Create, edit, delete exams (subject, date, time).
+-   Venue Management: Add, edit, delete examination venues.
+-   Student Management: Add, edit, delete students with photo uploads for facial recognition (face presence validated using `deepface`).
+-   Exam Management: Create, edit, delete exams (subject, date, time), linking them to specific venues.
 -   Exam Registration: Register students for specific exams.
--   Live Authentication: Real-time facial recognition during exams using a webcam.
+-   Live Authentication: Real-time facial recognition (using `deepface` with dlib-free models) during exams using a webcam.
     -   Visual feedback on the web interface (bounding boxes, student names, eligibility status).
--   Logging: Records authentication attempts (verified, unknown, not eligible) with timestamps.
+-   Logging: Records authentication attempts (Verified_Eligible, Verified_Not_Eligible, Unknown_Student) with timestamps.
 -   Log Viewing: Paginated and sortable view of authentication logs.
 
 **Raspberry Pi Hardware Integration (LCD & Buzzer):**
 -   **On Flask App Start:**
     -   LCD displays "Flask App Ready" (or similar) and the Raspberry Pi's IP address and port.
     -   Buzzer plays a startup sound.
--   **During Operation (Examples - can be extended):**
-    -   LCD can show status messages (e.g., "Live Auth Active").
-    -   Buzzer can provide audible cues for events (e.g., successful recognition, errors - *current integration is basic, can be expanded*).
+-   **During Live Authentication:**
+    -   LCD displays student's eligibility status (e.g., "Eligible: [Name]", "Not Eligible", "Unknown Face") and Student ID.
+    -   Buzzer provides audible cues (e.g., confirmation beep for eligible, alert beep for not eligible/unknown).
 -   **On Flask App Shutdown:**
     -   LCD displays "Server Offline" (or similar).
     -   Buzzer plays a shutdown sound.
@@ -80,6 +81,9 @@ Open a terminal on your Raspberry Pi and run the following commands:
 sudo apt-get update
 
 # Install system-level dependencies for I2C, Python smbus, build tools, and OpenCV dependencies
+# DeepFace may require additional libraries for some of its models/backends if not using the defaults.
+# TensorFlow (used by some DeepFace models) might need specific system libraries like libatlas-base-dev, etc.
+# Ensure your Raspberry Pi OS is up to date.
 sudo apt-get install -y python3-smbus i2c-tools build-essential cmake libjpeg-dev libpng-dev libtiff-dev libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libxvidcore-dev libx264-dev libgtk-3-dev libatlas-base-dev gfortran python3-dev
 
 # Install necessary Python libraries using pip
@@ -98,13 +102,17 @@ The `requirements.txt` file should include:
 - python-dotenv
 - RPi.GPIO (for Raspberry Pi)
 - smbus2 (for Raspberry Pi I2C)
-- face_recognition (and its dependencies like dlib, numpy, Pillow)
 - opencv-python
-- click
+- deepface
+- numpy
+- Werkzeug
+- SQLAlchemy
+- click # Often a Flask dependency, good to list if directly used or for commands
 - gunicorn (optional, for production deployment)
 
-*Note: Installing `dlib` (a dependency of `face_recognition`) can be time-consuming and resource-intensive on a Raspberry Pi. Pre-built wheels might be available, or compilation from source will occur.*
+*Note: The system now uses `deepface` for facial recognition, configured with dlib-free models (e.g., VGG-Face with OpenCV detector by default in the current code). `deepface` will download required model weights on its first use for a specific model, so an internet connection will be needed at that point.*
 *`smbus2` is preferred for I2C. If it causes issues, `python3-smbus` (system package) provides the `smbus` module.*
+*TensorFlow is a dependency of `deepface` for many models. Installation on Raspberry Pi can sometimes be tricky; ensure you have enough space and memory. If `pip install deepface` has issues with TensorFlow, you might need to install a specific TensorFlow Lite version or a version compatible with your Raspberry Pi's architecture separately.*
 
 ### 3. Check LCD I2C Address (Optional but Recommended)
 
@@ -138,10 +146,11 @@ You should see a table of I2C addresses. Your LCD will likely appear as `27` or 
 3.  **Initialize the Database (Flask-Migrate):**
     ```bash
     # If using a virtual environment, activate it first: source venv/bin/activate
-    flask db init  # Run only once to initialize migrations folder
-    flask db migrate -m "Initial migration." # Or a descriptive message
+    flask db init  # Run only once to initialize migrations folder (if it doesn't exist)
+    flask db migrate -m "Create initial database schema or descriptive message for current changes." # e.g., "Add Venue model"
     flask db upgrade # Apply migrations to the database
     ```
+    *Note: If you have run `flask db init` before, you only need `migrate` and `upgrade` for new changes.*
 
 4.  **Create an Admin User:**
     ```bash
@@ -197,10 +206,16 @@ This script uses the same hardware controller for LCD and buzzer operations. Pre
     -   Check the terminal output where `python3 run.py` is executing for detailed Flask error messages.
     -   Ensure all dependencies in `requirements.txt` are installed correctly in your environment.
     -   Verify database setup and migrations (`flask db upgrade`).
--   **Facial Recognition Issues**:
-    -   Ensure `face_recognition` and `opencv-python` are installed correctly.
-    -   Provide clear, well-lit photos for student registration.
-    -   Check webcam connectivity and permissions if using live authentication. The `initialize_camera` function in `app/routes.py` tries multiple camera indices.
-    -   Performance on Raspberry Pi for real-time recognition can be slow; consider lower resolution or frame skipping if needed (some settings in `app/routes.py` `generate_frames`).
+-   **Facial Recognition Issues (using DeepFace)**:
+    -   Ensure `deepface` and `opencv-python` are installed correctly.
+    -   **First Run Model Downloads**: `deepface` downloads model weights (e.g., for VGG-Face, Facenet) the first time a specific model is used. Ensure your Raspberry Pi has an internet connection for this initial setup. These are typically stored in `~/.deepface/weights`.
+    -   **Provide Clear Photos**: Use clear, well-lit, frontal photos for student registration. The `process_student_image` utility now attempts to validate if a face is detectable using `deepface`.
+    -   **Webcam**: Check webcam connectivity (`ls /dev/video*`) and permissions. The `initialize_camera` function in `app/routes.py` tries common camera indices.
+    -   **Performance on Raspberry Pi**:
+        -   Real-time recognition with `deepface` can be resource-intensive on a Raspberry Pi.
+        -   Consider adjusting camera resolution (e.g., to 320x240) and FPS in `app/routes.py` inside `initialize_camera()`.
+        -   The choice of `detector_backend` and `model_name` in `app/face_rec_utils.py` (e.g., `DEEPFACE_DETECTOR_BACKEND`, `DEEPFACE_MODEL_NAME`) significantly impacts performance and accuracy. Experiment with alternatives if needed (e.g., `ssd` detector, `SFace` model).
+        -   Frame skipping is currently disabled in `generate_frames` (`frame_skip = 0`) but can be enabled to reduce processing load.
+    -   **TensorFlow Issues**: If `deepface` installation or runtime fails due to TensorFlow, you might need to find a specific TensorFlow wheel (`.whl`) compatible with your Raspberry Pi's OS and Python version, install it manually, and then reinstall `deepface`. Check the `deepface` library's documentation or GitHub issues for Raspberry Pi-specific advice.
 
 Enjoy your integrated attendance system!

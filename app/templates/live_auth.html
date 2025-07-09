@@ -6,7 +6,10 @@
     <div class="row">
         <div class="col-md-12">
             <h2 class="text-center">Live Authentication: {{ exam.subject }}</h2>
-            <p class="text-center text-muted">Date: {{ exam.date.strftime('%Y-%m-%d') }} | Time: {{ exam.start_time.strftime('%H:%M') }} - {{ exam.end_time.strftime('%H:%M') }}</p>
+            <p class="text-center text-muted">
+                <strong>Venue:</strong> {{ exam.venue.name if exam.venue else 'N/A' }} ({{ exam.venue.location_details if exam.venue and exam.venue.location_details else 'Details N/A' }})<br>
+                <strong>Date:</strong> {{ exam.date.strftime('%Y-%m-%d') }} | <strong>Time:</strong> {{ exam.start_time.strftime('%H:%M') }} - {{ exam.end_time.strftime('%H:%M') }}
+            </p>
             <hr>
         </div>
     </div>

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_formhelpers.html" import render_field %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Add New Venue</h2>
+    <hr>
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('main.add_venue') }}" novalidate>
+                        {{ form.hidden_tag() }}
+
+                        {{ render_field(form.name, class="form-control", placeholder="e.g., Main Auditorium, Sports Hall Block A") }}
+
+                        {{ render_field(form.location_details, class="form-control", placeholder="e.g., First Floor, Near Library") }}
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                            <a href="{{ url_for('main.manage_venues') }}" class="btn btn-outline-secondary me-md-2">Cancel</a>
+                            {{ form.submit(class="btn btn-success") }}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

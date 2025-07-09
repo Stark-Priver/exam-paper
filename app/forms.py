@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileRequired
-from wtforms import StringField, PasswordField, BooleanField, SubmitField, FileField, DateField, TimeField
+from wtforms import StringField, PasswordField, BooleanField, SubmitField, FileField, DateField, TimeField, SelectField
 from wtforms.validators import DataRequired, Length, EqualTo, ValidationError, Optional
 from app.models import Student # Import User if needed for validation like unique username
 from flask import current_app
@@ -17,7 +17,7 @@ class StudentForm(FlaskForm):
     photo = FileField('Student Photo (JPG, PNG)') # Define field without context-dependent validators initially
     submit = SubmitField('Save Student')
 
-    def __init__(self, original_student_id_number=None, *args, **kwargs):
+    def __init__(self, original_student_id_number=None, *args, **kwargs): # Make sure this logic is fine for other forms if they use it
         super(StudentForm, self).__init__(*args, **kwargs)
         self.original_student_id_number = original_student_id_number
         
@@ -45,12 +45,34 @@ class StudentForm(FlaskForm):
             if student:
                 raise ValidationError('This Student ID Number is already registered. Please use a different one.')
 
+class VenueForm(FlaskForm):
+    name = StringField('Venue Name', validators=[DataRequired(), Length(max=100)])
+    location_details = StringField('Location Details (e.g., Room, Building)', validators=[Optional(), Length(max=200)])
+    submit = SubmitField('Save Venue')
+
+    def __init__(self, original_venue_name=None, *args, **kwargs):
+        super(VenueForm, self).__init__(*args, **kwargs)
+        self.original_venue_name = original_venue_name
+
+    def validate_name(self, name):
+        from app.models import Venue # Local import to avoid circular dependency at module level
+        if name.data != self.original_venue_name:
+            venue = Venue.query.filter_by(name=name.data).first()
+            if venue:
+                raise ValidationError('This Venue Name already exists. Please use a different one.')
+
 class ExamForm(FlaskForm):
     subject = StringField('Subject', validators=[DataRequired(), Length(max=100)])
+    venue = SelectField('Venue', validators=[DataRequired()], coerce=int)
     date = DateField('Date', validators=[DataRequired()], format='%Y-%m-%d')
     start_time = TimeField('Start Time', validators=[DataRequired()], format='%H:%M')
     end_time = TimeField('End Time', validators=[DataRequired()], format='%H:%M')
     submit = SubmitField('Save Exam')
+
+    def __init__(self, *args, **kwargs):
+        super(ExamForm, self).__init__(*args, **kwargs)
+        from app.models import Venue # Local import
+        self.venue.choices = [(v.id, v.name) for v in Venue.query.order_by(Venue.name).all()]
 
     def validate_end_time(self, end_time):
         if self.start_time.data and end_time.data:

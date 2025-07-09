@@ -1,7 +1,12 @@
 import os
-import face_recognition
+# import face_recognition # No longer used here
+from deepface import DeepFace # For face validation
 from werkzeug.utils import secure_filename
 from flask import current_app
+
+# Configuration for DeepFace validation (consistent with face_rec_utils)
+DEEPFACE_DETECTOR_BACKEND_FOR_VALIDATION = 'opencv'
+
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -55,26 +60,39 @@ def process_student_image(image_input, student_id_number, source_type='fileuploa
         return None, "Failed to determine image path."
 
     try:
-        # Load the saved image and find face encodings
-        image = face_recognition.load_image_file(image_path)
-        face_encodings = face_recognition.face_encodings(image)
+        # Validate that the saved image contains a detectable face using DeepFace
+        # DeepFace.extract_faces can take an image path.
+        # It returns a list of face objects, each with 'facial_area' and 'confidence'.
+        # If no face is detected, it might return an empty list or raise an error if enforce_detection=True.
+        detected_faces = DeepFace.extract_faces(
+            img_path=image_path,
+            detector_backend=DEEPFACE_DETECTOR_BACKEND_FOR_VALIDATION,
+            enforce_detection=False, # Don't error out if no face, just return empty list or similar
+            align=False # Alignment not strictly needed for just detection
+        )
 
-        if face_encodings:
-            # Assuming one face per photo for simplicity
-            return filename, face_encodings[0]
+        # Check if any face was detected with reasonable confidence (confidence is often 0 if not found by some backends)
+        # Or simply if the list is not empty and the first entry has a face area.
+        if detected_faces and detected_faces[0]['confidence'] > 0 : # Check if list is not empty and first element is a valid face
+            # Image is valid and contains a face.
+            # We are not returning embeddings anymore, just the filename.
+            # The Student.face_embedding field will not be used or will be removed from the model.
+            current_app.logger.info(f"Successfully processed and validated image: {filename}")
+            return filename, "Image validated successfully" # Second element can be a success message or None
         else:
             # No faces found, remove the saved image
-            os.remove(image_path)
-            return None, "No face found in the uploaded image."
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            current_app.logger.warning(f"No face found in image {filename}. Image rejected and removed.")
+            return None, "No face found in the uploaded image. Please provide a clearer image."
     except Exception as e:
-        # Handle potential errors during file saving or processing
-        # It's good practice to check existence before removing, even if an error occurred elsewhere.
+        current_app.logger.error(f"Error during DeepFace validation for image {image_path}: {e}", exc_info=True)
         if os.path.exists(image_path):
             try:
                 os.remove(image_path)
-            except Exception as remove_e: # Log or handle remove error if necessary
+            except Exception as remove_e:
                 current_app.logger.error(f"Error removing image {image_path} after processing error: {remove_e}")
-        return None, f"Error processing image: {str(e)}"
+        return None, f"Error processing image with DeepFace: {str(e)}"
 
 def remove_student_image(image_filename):
     """Removes a student's image file."""

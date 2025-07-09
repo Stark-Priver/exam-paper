@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, Response, current_app, send_from_directory
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import User, Student, Exam, Log, exam_registrations
-from app.forms import LoginForm, StudentForm, ExamForm, ExamRegistrationForm
+from app.models import User, Student, Exam, Log, exam_registrations, Venue
+from app.forms import LoginForm, StudentForm, ExamForm, ExamRegistrationForm, VenueForm
 from app import db
 from app.utils import process_student_image, remove_student_image
 from app.face_rec_utils import (
@@ -11,6 +11,7 @@ from app.face_rec_utils import (
     clear_face_cache,
     clear_recent_logs_cache
 )
+from app.hardware_controller import display_message, play_sound # For LCD and Buzzer
 import os
 import logging # Added for fallback logger
 from datetime import datetime, timedelta
@@ -164,25 +165,25 @@ def add_student():
         # Let's assume process_student_image will be adapted to handle BytesIO directly
         # and generate its own filename for captures.
 
-        image_filename, embedding_or_error = process_student_image(
+        image_filename, validation_message_or_error = process_student_image(
             image_to_process,
             form.student_id_number.data,
             source_type=image_source_type # Pass source_type for context
         )
 
         if image_filename is None:
-            flash(f'Could not process image: {embedding_or_error}', 'danger')
+            flash(f'Could not process image: {validation_message_or_error}', 'danger')
         else:
             student = Student(
                 student_id_number=form.student_id_number.data,
                 name=form.name.data,
-                face_image_path=image_filename,
-                face_embedding=embedding_or_error
+                face_image_path=image_filename
+                # face_embedding is no longer set as per DeepFace integration
             )
             db.session.add(student)
             db.session.commit()
-            clear_face_cache() # Ensure the new student is loaded on next recognition
-            flash('Student added successfully with face data!', 'success')
+            clear_face_cache() # Ensure the STUDENT_IMAGE_MAP is updated
+            flash(f'Student added successfully! Image validation: {validation_message_or_error}', 'success')
             return redirect(url_for('main.manage_students'))
             
     return render_template('add_student.html', title='Add Student', form=form)
@@ -205,19 +206,25 @@ def edit_student(student_id):
         
         if form.photo.data: 
             if student.face_image_path:
-                remove_student_image(student.face_image_path)
+                remove_student_image(student.face_image_path) # Remove old image
+                student.face_image_path = None # Clear path before new assignment
+                # student.face_embedding = None # Clear old embedding if it was stored
             
-            image_filename, embedding_or_error = process_student_image(form.photo.data, student.student_id_number)
+            image_filename, validation_message_or_error = process_student_image(
+                form.photo.data,
+                student.student_id_number # Use current/new student ID for filename consistency
+            )
             if image_filename:
                 student.face_image_path = image_filename
-                student.face_embedding = embedding_or_error
-                flash('Student details and photo updated successfully!', 'success')
+                # student.face_embedding = None # Ensure embedding is not set from old logic
+                flash(f'Student details and photo updated successfully! Image validation: {validation_message_or_error}', 'success')
             else:
-                flash(f'Could not process new image: {embedding_or_error}. Student details (except photo) updated.', 'warning')
+                flash(f'Could not process new image: {validation_message_or_error}. Student details (except photo) updated.', 'warning')
         else:
             flash('Student details updated successfully (photo unchanged).', 'success')
             
         db.session.commit()
+        clear_face_cache() # Update STUDENT_IMAGE_MAP
         return redirect(url_for('main.manage_students'))
 
     elif request.method == 'GET':
@@ -237,6 +244,62 @@ def delete_student(student_id):
     flash('Student deleted successfully.', 'success')
     return redirect(url_for('main.manage_students'))
 
+# --- Venue Management Routes ---
+@bp.route('/manage_venues')
+@login_required
+def manage_venues():
+    venues = Venue.query.order_by(Venue.name).all()
+    return render_template('manage_venues.html', venues=venues, title="Manage Venues")
+
+@bp.route('/add_venue', methods=['GET', 'POST'])
+@login_required
+def add_venue():
+    form = VenueForm()
+    if form.validate_on_submit():
+        venue = Venue(name=form.name.data, location_details=form.location_details.data)
+        db.session.add(venue)
+        try:
+            db.session.commit()
+            flash('Venue added successfully!', 'success')
+            return redirect(url_for('main.manage_venues'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding venue: {str(e)}', 'danger')
+    return render_template('add_venue.html', title='Add Venue', form=form)
+
+@bp.route('/edit_venue/<int:venue_id>', methods=['GET', 'POST'])
+@login_required
+def edit_venue(venue_id):
+    venue = Venue.query.get_or_404(venue_id)
+    form = VenueForm(original_venue_name=venue.name, obj=venue)
+    if form.validate_on_submit():
+        venue.name = form.name.data
+        venue.location_details = form.location_details.data
+        try:
+            db.session.commit()
+            flash('Venue updated successfully!', 'success')
+            return redirect(url_for('main.manage_venues'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating venue: {str(e)}', 'danger')
+    return render_template('edit_venue.html', title='Edit Venue', form=form, venue=venue)
+
+@bp.route('/delete_venue/<int:venue_id>', methods=['POST'])
+@login_required
+def delete_venue(venue_id):
+    venue = Venue.query.get_or_404(venue_id)
+    if venue.exams: # Check if there are exams associated with this venue
+        flash('Cannot delete venue. It has associated exams. Please reassign or delete them first.', 'danger')
+        return redirect(url_for('main.manage_venues'))
+    db.session.delete(venue)
+    try:
+        db.session.commit()
+        flash('Venue deleted successfully.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting venue: {str(e)}', 'danger')
+    return redirect(url_for('main.manage_venues'))
+
 # --- Exam Management Routes ---
 @bp.route('/manage_exams')
 @login_required
@@ -248,9 +311,22 @@ def manage_exams():
 @login_required
 def add_exam():
     form = ExamForm()
+    # Populate venue choices dynamically in the route as well, in case new venues were added
+    # since the form class was defined. This also helps if there's no app context during form class init.
+    form.venue.choices = [(v.id, v.name) for v in Venue.query.order_by(Venue.name).all()]
+    if not form.venue.choices:
+        flash('No venues available. Please add a venue first.', 'warning')
+        # Optionally redirect to add venue page or disable exam creation
+
     if form.validate_on_submit():
+        selected_venue = Venue.query.get(form.venue.data)
+        if not selected_venue:
+            flash('Selected venue not found.', 'danger')
+            return render_template('add_exam.html', title='Add Exam', form=form)
+
         exam = Exam(
             subject=form.subject.data,
+            venue_id=selected_venue.id, # Use selected_venue.id
             date=form.date.data,
             start_time=form.start_time.data,
             end_time=form.end_time.data
@@ -265,10 +341,20 @@ def add_exam():
 @login_required
 def edit_exam(exam_id):
     exam = Exam.query.get_or_404(exam_id)
-    form = ExamForm(obj=exam) 
+    form = ExamForm(obj=exam)
+    # Ensure venue choices are up-to-date and current venue is selected
+    form.venue.choices = [(v.id, v.name) for v in Venue.query.order_by(Venue.name).all()]
+    if request.method == 'GET':
+        form.venue.data = exam.venue_id # Set current venue for the form
 
     if form.validate_on_submit():
+        selected_venue = Venue.query.get(form.venue.data)
+        if not selected_venue:
+            flash('Selected venue not found.', 'danger')
+            return render_template('edit_exam.html', title='Edit Exam', form=form, exam=exam)
+
         exam.subject = form.subject.data
+        exam.venue_id = selected_venue.id # Update venue_id
         exam.date = form.date.data
         exam.start_time = form.start_time.data
         exam.end_time = form.end_time.data
@@ -391,11 +477,13 @@ def generate_frames(exam_id):
                        b'Content-Type: image/jpeg\r\n\r\n' + raw_frame_bytes + b'\r\n')
                 continue
 
-            rgb_frame = frame[:, :, ::-1]
+            # DeepFace typically expects BGR frames when using OpenCV detector.
+            # frame is already BGR. No conversion to RGB needed.
+            # rgb_frame = frame[:, :, ::-1] # No longer needed
             
             # Use app_instance for context if needed by find_and_log_recognized_faces
             # or ensure find_and_log_recognized_faces uses its own logger or passed logger
-            recognized_data_list = find_and_log_recognized_faces(rgb_frame, exam_id) # This util uses current_app.logger internally
+            recognized_data_list = find_and_log_recognized_faces(frame, exam_id) # Pass BGR frame
 
             # Update LATEST_RECOGNITION_STATUS with the most relevant status
             # For simplicity, if multiple faces, pick the first "interesting" one (not just unknown)
@@ -417,6 +505,26 @@ def generate_frames(exam_id):
                         "student_id_number": primary_status_to_report.get('student_id_number'),
                         "timestamp": datetime.utcnow()
                     }
+                    # --- LCD and Sound Output ---
+                    status_for_lcd = primary_status_to_report['status']
+                    name_for_lcd = primary_status_to_report['name'][:16] # Max 16 chars for name line
+                    id_for_lcd = (primary_status_to_report.get('student_id_number') or "N/A")[:16]
+
+                    if status_for_lcd == 'Verified_Eligible':
+                        display_message(f"Eligible: {name_for_lcd[:16-10]}", f"ID: {id_for_lcd}")
+                        play_sound("confirmation")
+                    elif status_for_lcd == 'Verified_Not_Eligible':
+                        display_message(f"Not Eligible:", f"{name_for_lcd[:10]} ({id_for_lcd[:5]})")
+                        play_sound("alert")
+                    elif status_for_lcd == 'Unknown_Student':
+                        display_message("Unknown Face", "Not Registered")
+                        play_sound("alert")
+                    elif status_for_lcd == 'Error_Student_Map' or status_for_lcd == 'Error_Exam_Not_Found':
+                        display_message("System Error", "Check Logs")
+                        play_sound("alert")
+                    # Else, no specific LCD update for other transient/no-detection states handled by web UI
+                    # --- End LCD and Sound Output ---
+
 
             # Add a comment explaining the primary_status_to_report logic
             # The primary_status_to_report aims to show the most "important" face status if multiple faces are detected.
@@ -463,6 +571,18 @@ def generate_frames(exam_id):
 def live_auth(exam_id):
     """Route to display the live authentication page for a specific exam."""
     exam = Exam.query.get_or_404(exam_id)
+
+    # Check if the exam is currently active
+    now = datetime.utcnow()
+    exam_start_datetime = datetime.combine(exam.date, exam.start_time)
+    exam_end_datetime = datetime.combine(exam.date, exam.end_time)
+
+    # Allow a small grace period (e.g., 15 minutes before start, 15 minutes after end)
+    grace_period = timedelta(minutes=15)
+
+    if not (exam_start_datetime - grace_period <= now <= exam_end_datetime + grace_period):
+        flash(f"Exam '{exam.subject}' at venue '{exam.venue.name}' is not currently active or within the allowed time window.", "warning")
+        return redirect(url_for('main.select_exam_for_auth'))
     
     # Ensure app context for DB operations and logging
     with current_app.app_context():
