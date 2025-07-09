@@ -125,12 +125,13 @@ def init_hardware(app_name="Flask App", server_ip="<IP_Pending>", server_port="<
             lcd.message(ip_info[:16], 2) # Ensure IP info fits
             buzzer.startup_sound()
             print(f"Displayed: {app_name} | {ip_info}")
-        elif lcd:
+        elif lcd: # Buzzer failed or not present, but LCD is OK
             lcd.clear()
             lcd.message(app_name[:16], 1, 0)
-            lcd.message("No Buzzer", 2, 0)
-            print(f"Displayed: {app_name} | No Buzzer")
-        elif buzzer:
+            ip_info = f"{server_ip}:{server_port}"
+            lcd.message(ip_info[:16], 2) # Display IP info even if buzzer is not available
+            print(f"Displayed: {app_name} | {ip_info} (Buzzer failed/unavailable)")
+        elif buzzer: # LCD failed, but Buzzer is OK
             print("LCD failed, Buzzer OK. Playing alert for LCD failure.")
             buzzer.alert_sound()
         else:

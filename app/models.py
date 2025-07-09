@@ -21,6 +21,15 @@ class User(UserMixin, db.Model): # For Admins
     def __repr__(self):
         return f'<User {self.username}>'
 
+class Venue(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    location_details = db.Column(db.String(200), nullable=True)
+    exams = db.relationship('Exam', backref='venue', lazy=True)
+
+    def __repr__(self):
+        return f'<Venue {self.name}>'
+
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id_number = db.Column(db.String(20), unique=True, nullable=False)
@@ -38,6 +47,8 @@ class Exam(db.Model):
     date = db.Column(db.Date, nullable=False)
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
+    venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=False)
+    # venue relationship is defined in Venue model via backref
     logs = db.relationship('Log', backref='exam', lazy=True)
     # Association table for Student <-> Exam many-to-many relationship
     registered_students = db.relationship(

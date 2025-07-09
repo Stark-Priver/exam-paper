@@ -18,6 +18,8 @@ This document provides guidelines for AI agents working on this codebase.
 
 -   **`RPi.GPIO`**: Used for GPIO control, including PWM for the buzzer.
 -   **`smbus2`**: Preferred for I2C communication with the LCD. `smbus` is a fallback if `smbus2` is unavailable, but new development should target `smbus2`.
+-   **`OpenCV (opencv-python)`**: Used for image processing and as a backend for face detection.
+-   **`DeepFace`**: The primary library for facial recognition and analysis. Configured to use dlib-free models and detectors.
 -   Standard Python libraries (`socket`, `time`, `fcntl`, `struct`) are also used.
 
 ## Code Style and Structure
